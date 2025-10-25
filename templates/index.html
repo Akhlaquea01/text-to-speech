@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hinglish Text-to-Speech</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>Hinglish Text-to-Speech</h1>
+        <textarea id="text-input" rows="10" cols="50" placeholder="Enter Hinglish text here..."></textarea>
+        <div class="options">
+            <input type="checkbox" id="normalize-checkbox">
+            <label for="normalize-checkbox">Use Ollama for text normalization</label>
+        </div>
+        <div class="options">
+            <label for="speaker-select">Speaker:</label>
+            <select id="speaker-select">
+                <option value="kavya">Kavya</option>
+                <option value="agastya">Agastya</option>
+                <option value="maitri">Maitri</option>
+                <option value="vinaya">Vinaya</option>
+            </select>
+        </div>
+        <button id="convert-btn">Convert to Speech</button>
+        <audio id="audio-output" controls></audio>
+    </div>
+    <script src="/static/script.js"></script>
+</body>
+</html>
