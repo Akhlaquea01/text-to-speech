@@ -345,10 +345,29 @@ class HinglishTTS:
 
         return audio_hat.squeeze().clamp(-1, 1).cpu().numpy()
 
-    def generate_speech_advanced(self, text, speaker="kavya", temperature=0.4, top_p=0.9):
-        """Generate speech using advanced TTS models."""
+    def generate_speech_advanced(self, text, speaker="kavya", temperature=0.4, top_p=0.9, voice_style="natural"):
+        """Generate speech using advanced TTS models with natural voice output."""
         if not self.advanced_models_loaded:
             raise ValueError("Advanced models not loaded")
+        
+        # Adjust generation parameters based on voice style for more natural output
+        style_params = {
+            "natural": {"temperature": 0.4, "top_p": 0.9, "repetition_penalty": 1.05},
+            "conversational": {"temperature": 0.5, "top_p": 0.85, "repetition_penalty": 1.1},
+            "friendly": {"temperature": 0.6, "top_p": 0.8, "repetition_penalty": 1.15},
+            "professional": {"temperature": 0.3, "top_p": 0.95, "repetition_penalty": 1.02},
+            "expressive": {"temperature": 0.7, "top_p": 0.75, "repetition_penalty": 1.2},
+            "calm": {"temperature": 0.2, "top_p": 0.98, "repetition_penalty": 1.0},
+            "energetic": {"temperature": 0.8, "top_p": 0.7, "repetition_penalty": 1.25}
+        }
+        
+        params = style_params.get(voice_style, style_params["natural"])
+        temperature = params["temperature"]
+        top_p = params["top_p"]
+        repetition_penalty = params["repetition_penalty"]
+        
+        print(f"🎭 Generating {voice_style} speech with speaker {speaker}")
+        print(f"🎚️ Parameters: temp={temperature}, top_p={top_p}, rep_penalty={repetition_penalty}")
             
         prompt = f"<spk_{speaker}> {text}"
         prompt_tokens = self.tokenizer.encode(prompt, add_special_tokens=False)
@@ -371,7 +390,7 @@ class HinglishTTS:
                 do_sample=True,
                 temperature=temperature,
                 top_p=top_p,
-                repetition_penalty=1.05,
+                repetition_penalty=repetition_penalty,
                 pad_token_id=self.tokenizer.pad_token_id,
                 eos_token_id=[self.END_OF_SPEECH_TOKEN, self.END_OF_AI_TOKEN]
             )
@@ -408,7 +427,7 @@ class HinglishTTS:
                 }
                 selected_voice = hindi_voice_map.get(voice_style, "hi-IN-SwaraNeural")
             else:
-                selected_voice = voice or self.voice_map.get(voice_style, self.voice_map["default"])
+                selected_voice = self.voice_map.get(voice_style, self.voice_map["default"])
             
             params = self.style_params.get(voice_style, self.style_params["natural"])
             print(f"🎭 Voice style: {voice_style}")
@@ -431,9 +450,32 @@ class HinglishTTS:
             
             if self.advanced_models_loaded:
                 print("🎙️ Using advanced TTS models...")
-                audio = self.generate_speech_advanced(text, voice)
+                print(f"🎭 Speaker: {voice}")
+                print(f"🎚️ Voice style: {voice_style}")
+                
+                # Use the speaker parameter for advanced TTS
+                audio = self.generate_speech_advanced(text, voice, voice_style=voice_style)
+                
+                # Apply speed adjustment if needed
+                if speed != 1.0:
+                    print(f"⚡ Adjusting speed to {speed}x...")
+                    # Simple speed adjustment by resampling
+                    import numpy as np
+                    original_rate = 24000
+                    new_rate = int(original_rate * speed)
+                    audio_resampled = np.interp(
+                        np.linspace(0, len(audio), int(len(audio) * original_rate / new_rate)),
+                        np.arange(len(audio)),
+                        audio
+                    )
+                    audio = audio_resampled
+                
                 sf.write(output_file, audio, 24000)
                 print(f"✅ Audio saved to {output_file}")
+                
+                if os.path.exists(output_file):
+                    file_size = os.path.getsize(output_file) / 1024
+                    print(f"📁 File size: {file_size:.1f} KB")
             else:
                 print("⚠️  Advanced models not available, falling back to Edge TTS")
                 await self.generate_tts_async(text, output_file, speed, voice, "edge", voice_style)
@@ -460,19 +502,25 @@ class HinglishTTS:
                 }
                 selected_voice = hindi_voice_map.get(voice_style, "hi-IN-SwaraNeural")
             else:
-                selected_voice = voice or self.voice_map.get(voice_style, self.voice_map["default"])
+                selected_voice = self.voice_map.get(voice_style, self.voice_map["default"])
             
             params = self.style_params.get(voice_style, self.style_params["natural"])
             print(f"🎭 Voice style: {voice_style}")
             
-            asyncio.run(self.generate_tts_edge(
-                text, 
-                output_file, 
-                speed, 
-                selected_voice,
-                params["pitch"],
-                params["volume"]
-            ))
+            # Create a new event loop for CLI mode
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                loop.run_until_complete(self.generate_tts_edge(
+                    text, 
+                    output_file, 
+                    speed, 
+                    selected_voice,
+                    params["pitch"],
+                    params["volume"]
+                ))
+            finally:
+                loop.close()
             
         elif tts_engine == "gtts":
             self.generate_tts_gtts(text, output_file, speed, "auto")
@@ -483,9 +531,32 @@ class HinglishTTS:
             
             if self.advanced_models_loaded:
                 print("🎙️ Using advanced TTS models...")
-                audio = self.generate_speech_advanced(text, voice)
+                print(f"🎭 Speaker: {voice}")
+                print(f"🎚️ Voice style: {voice_style}")
+                
+                # Use the speaker parameter for advanced TTS
+                audio = self.generate_speech_advanced(text, voice, voice_style=voice_style)
+                
+                # Apply speed adjustment if needed
+                if speed != 1.0:
+                    print(f"⚡ Adjusting speed to {speed}x...")
+                    # Simple speed adjustment by resampling
+                    import numpy as np
+                    original_rate = 24000
+                    new_rate = int(original_rate * speed)
+                    audio_resampled = np.interp(
+                        np.linspace(0, len(audio), int(len(audio) * original_rate / new_rate)),
+                        np.arange(len(audio)),
+                        audio
+                    )
+                    audio = audio_resampled
+                
                 sf.write(output_file, audio, 24000)
                 print(f"✅ Audio saved to {output_file}")
+                
+                if os.path.exists(output_file):
+                    file_size = os.path.getsize(output_file) / 1024
+                    print(f"📁 File size: {file_size:.1f} KB")
             else:
                 print("⚠️  Advanced models not available, falling back to Edge TTS")
                 self.generate_tts(text, output_file, speed, voice, "edge", voice_style)

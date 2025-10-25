@@ -37,3 +37,37 @@ button {
 audio {
     width: 100%;
 }
+
+.options {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    justify-content: space-between;
+}
+
+.options input[type="checkbox"] {
+    margin-right: 5px;
+}
+
+.options select {
+    padding: 5px;
+    border-radius: 3px;
+    border: 1px solid #ccc;
+    min-width: 150px;
+}
+
+.options input[type="range"] {
+    flex: 1;
+    margin: 0 10px;
+}
+
+.options label {
+    white-space: nowrap;
+    min-width: 100px;
+}
+
+button:disabled {
+    background-color: #ccc;
+    cursor: not-allowed;
+}

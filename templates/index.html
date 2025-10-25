@@ -23,6 +23,31 @@
                 <option value="vinaya">Vinaya</option>
             </select>
         </div>
+        <div class="options">
+            <label for="tts-engine-select">TTS Engine:</label>
+            <select id="tts-engine-select">
+                <option value="advanced">Advanced (Best Quality)</option>
+                <option value="edge">Edge TTS (Fast)</option>
+                <option value="gtts">Google TTS (Basic)</option>
+            </select>
+        </div>
+        <div class="options">
+            <label for="voice-style-select">Voice Style:</label>
+            <select id="voice-style-select">
+                <option value="natural">Natural</option>
+                <option value="conversational">Conversational</option>
+                <option value="friendly">Friendly</option>
+                <option value="professional">Professional</option>
+                <option value="expressive">Expressive</option>
+                <option value="calm">Calm</option>
+                <option value="energetic">Energetic</option>
+                <option value="hindi">Hindi</option>
+            </select>
+        </div>
+        <div class="options">
+            <label for="speed-slider">Speed: <span id="speed-value">1.0</span>x</label>
+            <input type="range" id="speed-slider" min="0.5" max="2.0" step="0.1" value="1.0">
+        </div>
         <button id="convert-btn">Convert to Speech</button>
         <audio id="audio-output" controls></audio>
     </div>
