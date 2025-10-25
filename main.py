@@ -66,7 +66,7 @@ class TTSRequest(BaseModel):
     text: str
     normalize: bool = False
     speaker: str = "kavya"
-    tts_engine: str = "edge"
+    tts_engine: str = "advanced"
     voice_style: str = "natural"
     speed: float = 1.0
 
@@ -431,7 +431,7 @@ class HinglishTTS:
             
             if self.advanced_models_loaded:
                 print("🎙️ Using advanced TTS models...")
-                audio = self.generate_speech_advanced(text, voice_style)
+                audio = self.generate_speech_advanced(text, voice)
                 sf.write(output_file, audio, 24000)
                 print(f"✅ Audio saved to {output_file}")
             else:
@@ -483,7 +483,7 @@ class HinglishTTS:
             
             if self.advanced_models_loaded:
                 print("🎙️ Using advanced TTS models...")
-                audio = self.generate_speech_advanced(text, voice_style)
+                audio = self.generate_speech_advanced(text, voice)
                 sf.write(output_file, audio, 24000)
                 print(f"✅ Audio saved to {output_file}")
             else:
@@ -526,7 +526,7 @@ class HinglishTTS:
                     text_to_synthesize,
                     "output.mp3",
                     request.speed,
-                    None,
+                    request.speaker,
                     request.tts_engine,
                     request.voice_style
                 )
@@ -583,7 +583,7 @@ class HinglishTTS:
                 text=normalized_text,
                 output_file=args.output,
                 speed=args.speed,
-                voice=args.voice,
+                voice=args.speaker,
                 tts_engine=args.tts_engine,
                 voice_style=args.voice_style
             )
@@ -677,11 +677,18 @@ Examples:
         help="Voice style for more natural speech (default: natural)"
     )
     parser.add_argument(
+        "--speaker",
+        type=str,
+        default="kavya",
+        choices=["kavya", "agastya", "maitri", "vinaya"],
+        help="Speaker for the advanced TTS engine (default: kavya)"
+    )
+    parser.add_argument(
         "--tts-engine", 
         type=str, 
-        default="edge", 
+        default="advanced",
         choices=["edge", "gtts", "advanced"],
-        help="TTS engine to use (default: edge)"
+        help="TTS engine to use (default: advanced)"
     )
     parser.add_argument(
         "--force-hindi", 
