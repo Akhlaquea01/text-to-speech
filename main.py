@@ -231,16 +231,29 @@ class HinglishTTS:
             return [(text, "neutral")]
         
         try:
-            prompt = f"""You are a text-to-speech emotion analyzer. Analyze the following text and add emotion tags where appropriate.
+            prompt = f"""ou are an emotion-aware text-to-speech enhancer. 
+Your task is to analyze the emotional tone of the given text and insert appropriate emotion tags to guide expressive TTS delivery.
 
-Available emotion tags: [enthusiastically], [sarcastically], [thoughtfully], [laughs warmly], [dramatically], [softly], [confidently], [whispers], [excitedly], [neutral]
+Available Emotion Tags:
+[enthusiastically], [sarcastically], [thoughtfully], [laughs warmly], [dramatically], [softly], [confidently], [whispers], [excitedly], [neutral]
 
-Input text: {text}
+Instructions:
+- Identify emotional shifts and insert emotion tags before relevant phrases or sentences.
+- Use tags only when contextually meaningful — avoid over-tagging.
+- Maintain the original text completely; do not alter or summarize it.
+- Do not add explanations, commentary, or metadata — return only the formatted text.
+- Format strictly as:
+  [emotion] text segment
 
-Please return ONLY the text with emotion tags inserted at appropriate positions. Format: [emotion] text segment
-Example: [enthusiastically] I love this! [thoughtfully] But maybe we should consider other options.
+Example:
+Input:
+I love this idea! But maybe we should think it through a bit more.
 
-Important: Return ONLY the formatted text with emotion tags, no explanations or additional commentary."""
+Output:
+[enthusiastically] I love this idea! [thoughtfully] But maybe we should think it through a bit more.
+
+Input text:
+{text}"""
 
             print(f"[LLM] Processing emotion tags with LLM...")
             
