@@ -2,12 +2,12 @@ const textInput = document.getElementById('text-input');
 const normalizeCheckbox = document.getElementById('normalize-checkbox');
 const convertBtn = document.getElementById('convert-btn');
 const audioOutput = document.getElementById('audio-output');
-const speakerSelect = document.getElementById('speaker-select');
+const engineSelect = document.getElementById('engine-select');
 
 convertBtn.addEventListener('click', async () => {
     const text = textInput.value;
-    const normalize = normalizeCheckbox.checked;
-    const speaker = speakerSelect.value;
+    const use_llm = normalizeCheckbox.checked;
+    const engine = engineSelect.value;
 
     const response = await fetch('/synthesize', {
         method: 'POST',
@@ -16,8 +16,10 @@ convertBtn.addEventListener('click', async () => {
         },
         body: JSON.stringify({
             text: text,
-            normalize: normalize,
-            speaker: speaker
+            emotion: "neutral",
+            speed: 1.0,
+            use_llm: use_llm,
+            engine: engine
         })
     });
 

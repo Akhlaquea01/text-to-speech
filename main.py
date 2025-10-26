@@ -26,6 +26,17 @@ from pydub import AudioSegment
 from pydub.effects import speedup, normalize
 import io
 
+# Advanced TTS imports
+try:
+    import torch
+    from transformers import VitsModel, AutoTokenizer
+    import torchaudio
+    ADVANCED_TTS_AVAILABLE = True
+except ImportError:
+    ADVANCED_TTS_AVAILABLE = False
+    print("[WARN] Advanced TTS libraries not found. High-quality engine disabled.")
+
+
 # Ollama import
 try:
     import ollama
@@ -40,6 +51,63 @@ class TTSRequest(BaseModel):
     emotion: str = "neutral"
     speed: float = 1.0
     use_llm: bool = True
+    engine: str = "gtts"
+
+
+class VeenaTTS:
+    """Advanced TTS model using Hugging Face transformers"""
+
+    def __init__(self, model_name="maya-research/veena-tts"):
+        self.model_name = model_name
+        self.model = None
+        self.tokenizer = None
+
+    def load_model(self):
+        """Load the TTS model and tokenizer"""
+        if not ADVANCED_TTS_AVAILABLE:
+            print("[ERROR] Advanced TTS libraries not available.")
+            return
+
+        try:
+            print(f"[TTS] Loading advanced model: {self.model_name}")
+            # Load model with memory-efficient dtype
+            self.model = VitsModel.from_pretrained(
+                self.model_name,
+                dtype=torch.bfloat16
+            )
+            # Use a proper tokenizer for VITS models
+            try:
+                self.tokenizer = AutoTokenizer.from_pretrained("facebook/wav2vec2-base")
+            except:
+                # Fallback to a simpler approach
+                self.tokenizer = None
+            print("[OK] Advanced TTS model loaded successfully.")
+        except Exception as e:
+            print(f"[ERROR] Could not load advanced TTS model: {e}")
+            self.model = None
+            self.tokenizer = None
+
+    async def generate_tts(self, text: str, output_file: str):
+        """Generate speech using the advanced TTS model"""
+        if not self.model or not self.tokenizer:
+            raise RuntimeError("Advanced TTS model not loaded.")
+
+        try:
+            print(f"[TTS] Generating with advanced model...")
+
+            inputs = self.tokenizer(text, return_tensors="pt")
+
+            with torch.no_grad():
+                waveform = self.model(**inputs).waveform
+
+            # Save the waveform to a file
+            torchaudio.save(output_file, waveform.unsqueeze(0), sample_rate=self.model.config.sampling_rate)
+
+            print(f"[OK] Advanced audio saved to {output_file}")
+
+        except Exception as e:
+            print(f"[ERROR] Advanced TTS generation failed: {e}")
+            raise
 
 
 class HinglishTTS:
@@ -49,6 +117,12 @@ class HinglishTTS:
         self.app = None
         self.output_dir = Path("output")
         self.output_dir.mkdir(exist_ok=True)
+        self.veena_tts = None
+
+        # Advanced TTS disabled by default due to model compatibility issues
+        # if ADVANCED_TTS_AVAILABLE:
+        #     self.veena_tts = VeenaTTS()
+        #     self.veena_tts.load_model()
         
         # Emotion to speech parameters mapping
         # Using gTTS with pydub for audio manipulation
@@ -264,6 +338,17 @@ Important: Return ONLY the formatted text with emotion tags, no explanations or 
             traceback.print_exc()
             raise
 
+    async def generate_tts_advanced(self, text: str, output_file: str):
+        """Generate speech using the advanced TTS model."""
+        if not self.veena_tts or not self.veena_tts.model:
+            raise HTTPException(status_code=500, detail="Advanced TTS model not available.")
+
+        try:
+            await self.veena_tts.generate_tts(text, output_file)
+        except Exception as e:
+            print(f"[ERROR] Advanced TTS generation failed: {e}")
+            raise HTTPException(status_code=500, detail=str(e))
+
     def setup_web_interface(self):
         """Setup FastAPI web interface."""
         self.app = FastAPI(title="Hinglish Text-to-Speech with Emotions", version="2.0.0")
@@ -285,59 +370,48 @@ Important: Return ONLY the formatted text with emotion tags, no explanations or 
         async def synthesize(request: TTSRequest):
             try:
                 print(f"\n{'='*50}")
-                print(f"🎬 New TTS Request")
-                print(f"📝 Text: {request.text}")
-                print(f"🎭 Emotion: {request.emotion}")
-                print(f"⚡ Speed: {request.speed}x")
-                print(f"🧠 Use LLM: {request.use_llm}")
+                print(f"New TTS Request")
+                print(f"Text: {request.text}")
+                print(f"Emotion: {request.emotion}")
+                print(f"Speed: {request.speed}x")
+                print(f"Use LLM: {request.use_llm}")
+                print(f"Engine: {request.engine}")
                 print(f"{'='*50}\n")
-                
-                # Cleanup old files first
+
                 self.cleanup_old_files()
-                
-                # Process text with LLM to add emotion tags if requested
-                if '[' not in request.text and request.use_llm and OLLAMA_AVAILABLE:
-                    print("🧠 Using LLM to add emotion tags...")
-                    segments = await self.process_emotion_tags_with_llm(request.text)
-                elif '[' in request.text:
-                    # Parse existing emotion tags
-                    print("📋 Parsing existing emotion tags...")
-                    segments = self.parse_emotion_tags(request.text)
+
+                if request.engine == "advanced" and not (self.veena_tts and self.veena_tts.model):
+                    raise HTTPException(status_code=400, detail="Advanced TTS engine not available.")
+
+                # For advanced TTS, we don't use emotion tags yet
+                if request.engine == "advanced":
+                    segments = [(request.text, "neutral")]
                 else:
-                    # No LLM, use specified emotion for entire text
-                    segments = [(request.text, request.emotion)]
-                
-                print(f"📊 Generated {len(segments)} segment(s)")
-                
-                # Generate timestamp for unique filename
+                    if '[' not in request.text and request.use_llm and OLLAMA_AVAILABLE:
+                        print("Using LLM to add emotion tags...")
+                        segments = await self.process_emotion_tags_with_llm(request.text)
+                    elif '[' in request.text:
+                        print("Parsing existing emotion tags...")
+                        segments = self.parse_emotion_tags(request.text)
+                    else:
+                        segments = [(request.text, request.emotion)]
+
+                print(f"Generated {len(segments)} segment(s)")
+
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                 output_file = str(self.output_dir / f"output_{timestamp}.mp3")
+
+                # Combine text from all segments
+                combined_text = " ".join([seg[0] for seg in segments])
                 
-                if len(segments) == 1:
-                    # Single segment - generate directly to final output
-                    text_segment, emotion = segments[0]
-                    
-                    # Override emotion if explicitly specified in request (not neutral)
-                    if request.emotion != "neutral":
-                        emotion = request.emotion
-                    
-                    await self.generate_tts_gtts(
-                        text_segment,
-                        output_file,
-                        emotion,
-                        request.speed
-                    )
+                if request.engine == "advanced":
+                    await self.generate_tts_advanced(combined_text, output_file)
                 else:
-                    # Multiple segments - generate each
-                    # For now, we'll generate just the first segment as a simple implementation
-                    # In production, you'd use pydub or ffmpeg to concatenate properly
-                    print(f"⚠️ Multiple segments detected - generating concatenated speech...")
-                    
-                    # Combine all text with their emotions
-                    combined_text = " ".join([seg[0] for seg in segments])
-                    # Use the most common emotion or first one
+                    # Use gTTS with the primary emotion
                     primary_emotion = segments[0][1]
-                    
+                    if request.emotion != "neutral":
+                        primary_emotion = request.emotion
+
                     await self.generate_tts_gtts(
                         combined_text,
                         output_file,
@@ -376,6 +450,8 @@ Important: Return ONLY the formatted text with emotion tags, no explanations or 
         print(f"[TTS] Using Google TTS (gTTS) - No SSL issues!")
         print(f"{'='*60}")
         print(f"[INFO] Server: http://{host}:{port}")
+        print(f"[INFO] Google TTS (gTTS): Available")
+        print(f"[INFO] Advanced TTS: {'Available' if self.veena_tts and self.veena_tts.model else 'Not available'}")
         print(f"[INFO] Available emotions: {', '.join(self.emotion_params.keys())}")
         print(f"[INFO] LLM processing: {'Available' if OLLAMA_AVAILABLE else 'Not available'}")
         print(f"{'='*60}\n")
