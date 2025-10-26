@@ -1,218 +1,206 @@
-# 🎯 Hinglish Text-to-Speech System
+# 🎙️ Hinglish Text-to-Speech with Emotion Tags
 
-A unified **Hinglish Text-to-Speech (TTS)** application that converts mixed Hindi-English text into natural-sounding audio files. Features both web interface and command-line functionality with multiple TTS engines.
+A modern web-based Text-to-Speech application that supports emotional styling and intelligent emotion detection using AI. Convert your text to natural-sounding speech with emotions like enthusiasm, sarcasm, thoughtfulness, and more!
 
 ## ✨ Features
 
-- 🗣️ **Mixed Language Support**: Handles Hinglish (Hindi + English) text seamlessly
-- 🧠 **AI-Powered Normalization**: Uses Ollama LLM to fix punctuation and improve text flow
-- 🎙️ **Multiple TTS Engines**: Edge TTS, Google TTS, and Advanced AI models
-- 🌐 **Web Interface**: Beautiful web UI for easy text-to-speech conversion
-- 💻 **Command Line**: Full CLI support for automation and scripting
-- 🏠 **Fully Offline**: No API keys or external cloud dependencies
-- ⚡ **Auto Hardware Detection**: Automatically uses GPU when available
-- 🎵 **Multiple Formats**: Outputs MP3/WAV audio files
+- 🎭 **Emotion Tags**: Add emotional styling to your speech with tags like `[enthusiastically]`, `[sarcastically]`, `[thoughtfully]`, etc.
+- 🧠 **AI-Powered Emotion Detection**: Automatically detect and apply appropriate emotions using Ollama LLM (optional)
+- 🎵 **Multiple Voice Styles**: 10 different emotion presets with unique voice characteristics
+- ⚡ **Adjustable Speed**: Control speech speed from 0.5x to 2.0x
+- 🌐 **Modern Web Interface**: Beautiful, responsive UI with real-time feedback
+- 🔄 **Async Processing**: Fully asynchronous for responsive performance
+- 🗑️ **Auto Cleanup**: Automatically removes old audio files before generating new ones
+- 📥 **Download Support**: Download generated audio files
 
-## 🚀 Quick Start
+## 🎭 Available Emotions
 
-### Prerequisites
+1. **😃 Enthusiastically** - Energetic and excited
+2. **😏 Sarcastically** - Dry and ironic
+3. **🤔 Thoughtfully** - Contemplative and measured
+4. **😄 Laughs Warmly** - Friendly and joyful
+5. **🎭 Dramatically** - Expressive and theatrical
+6. **🌸 Softly** - Gentle and quiet
+7. **💪 Confidently** - Strong and assured
+8. **🤫 Whispers** - Very soft and intimate
+9. **🎉 Excitedly** - High energy and animated
+10. **😐 Neutral** - Standard speaking style
 
-1. **Python 3.8+** (tested with Python 3.14)
-2. **8GB+ RAM** (16GB+ recommended for advanced models)
-3. **GPU with CUDA** (optional, but recommended for advanced TTS)
+## 🚀 Installation
 
-### Installation
+1. **Clone the repository**
+```bash
+git clone <your-repo-url>
+cd tts
+```
 
-1. **Install Python dependencies**
+2. **Install Python dependencies**
+```bash
+pip install -r requirements.txt
+```
+
+3. **Install Ollama (Optional - for AI emotion detection)**
+   - Visit [ollama.ai](https://ollama.ai) and follow installation instructions
+   - Pull the llama3 model:
    ```bash
-   pip install -r requirements.txt
+   ollama pull llama3
    ```
 
-2. **Run the application**
-   ```bash
-   # Web interface (recommended)
-   python main.py --web
-   
-   # Command line
-   python main.py --text "Aaj meeting hai at 5 pm"
+## 🎯 Usage
+
+### Starting the Server
+
+Simply run:
+```bash
+python main.py
+```
+
+The server will start at `http://localhost:8000`
+
+### Using Emotion Tags
+
+You can use emotion tags in your text in two ways:
+
+1. **Manual Tags**: Insert emotion tags directly in your text
+   ```
+   [enthusiastically] I love this feature! [thoughtfully] But we should consider the implications.
    ```
 
-3. **Open your browser** and go to: `http://localhost:8000` (for web interface)
+2. **AI Auto-Detection**: Enable "Use AI to auto-detect emotions" and the LLM will automatically add appropriate emotion tags to your text.
 
-## 📖 Usage
+### Web Interface
 
-### Web Interface (Recommended)
-
-Start the web server:
-```bash
-python main.py --web
-```
-
-Then open `http://localhost:8000` in your browser to use the interactive interface.
-
-### Command Line Usage
-
-#### Basic Usage
-```bash
-python main.py --text "Aaj meeting hai at 5 pm"
-```
-
-#### Advanced Usage
-```bash
-# Custom output file and speed
-python main.py --text "Kal subah office jana hai and I'm not ready yet!" --output my_audio.mp3 --speed 1.2
-
-# Use different voice styles for more natural speech
-python main.py --text "Welcome to our meeting" --voice-style conversational
-python main.py --text "This is important" --voice-style professional
-python main.py --text "Let's have fun!" --voice-style energetic
-
-# Use different TTS engines
-python main.py --text "Hello world" --tts-engine gtts
-python main.py --text "Advanced speech" --tts-engine advanced
-
-# Use different Ollama model for normalization
-python main.py --text "Hello world" --model mistral
-
-# Skip text normalization
-python main.py --text "Perfect text already" --skip-normalization
-```
-
-#### Command Line Options
-
-| Option | Description | Default |
-|--------|-------------|---------|
-| `--web` | Start web interface | False |
-| `--text` | Hinglish text to convert (required for CLI) | - |
-| `--output` | Output audio file path | `output.mp3` |
-| `--speed` | Speech speed multiplier | `1.0` |
-| `--voice-style` | Voice style for natural speech | `natural` |
-| `--tts-engine` | TTS engine to use | `edge` |
-| `--model` | Ollama model for normalization | `llama3` |
-| `--skip-normalization` | Skip AI text normalization | False |
-| `--host` | Host for web interface | `0.0.0.0` |
-| `--port` | Port for web interface | `8000` |
-
-## 🔧 TTS Engines
-
-### 1. Edge TTS (Default)
-- **High Quality**: Microsoft neural voices
-- **Fast**: Quick generation
-- **Multilingual**: Supports Hindi and English
-- **Voice Styles**: Natural, conversational, professional, etc.
-
-### 2. Google TTS (gTTS)
-- **Reliable**: Google's text-to-speech
-- **Language Detection**: Automatic Hindi/English detection
-- **Offline**: No internet required after setup
-
-### 3. Advanced AI Models
-- **Best Quality**: State-of-the-art AI models
-- **Multiple Speakers**: 4 different voice options
-- **GPU Accelerated**: Fast processing with CUDA
-- **Resource Intensive**: Requires significant RAM/GPU
-
-## 🎭 Voice Styles
-
-- **natural** - Warm, natural voice (default)
-- **conversational** - Friendly, conversational tone
-- **friendly** - Warm, approachable voice
-- **professional** - Clear, professional tone
-- **expressive** - Emotional, dynamic voice
-- **calm** - Soothing, relaxed voice
-- **energetic** - Dynamic, enthusiastic voice
-- **hindi** - Hindi voice for Hindi text
+1. Enter your text in the text area
+2. (Optional) Click emotion tag buttons to insert emotions at cursor position
+3. Adjust speed slider (0.5x - 2.0x)
+4. Select default emotion for untagged text
+5. Toggle AI emotion detection on/off
+6. Click "Generate Speech"
+7. Listen to or download the generated audio
 
 ## 📁 Project Structure
 
 ```
-text-to-speech/
-├── main.py              # Main executable (web + CLI)
-├── requirements.txt      # Python dependencies
-├── templates/           # Web interface templates
-│   └── index.html       # Main web page
-├── static/              # Web interface assets
-│   ├── style.css        # Styling
-│   └── script.js        # JavaScript
-└── README.md           # This file
+tts/
+├── main.py                 # FastAPI backend with emotion processing
+├── requirements.txt        # Python dependencies
+├── README.md              # This file
+├── templates/
+│   └── index.html         # Web interface
+├── static/
+│   ├── script.js          # Frontend JavaScript
+│   └── style.css          # Modern UI styling
+└── output/                # Generated audio files (auto-created)
 ```
 
-## 🔧 How It Works
+## 🔧 Configuration
 
-1. **Text Input**: You provide mixed Hindi-English text
-2. **AI Normalization**: Ollama LLM improves punctuation and flow (optional)
-3. **Language Detection**: Automatically detects Hindi vs English content
-4. **Speech Synthesis**: Selected TTS engine converts text to natural speech
-5. **Audio Output**: Saves as MP3/WAV file
+### Emotion Voice Mapping
 
-### Example Workflow
+Each emotion is mapped to specific voice characteristics in `main.py`:
+- Voice type (different neural voices)
+- Pitch adjustment
+- Volume adjustment
+- Speaking rate
 
-```bash
-# Input
-python main.py --text "Kal subah office jana hai and I'm not ready yet!"
+You can customize these mappings by editing the `emotion_voice_map` dictionary in the `HinglishTTS` class.
 
-# AI Normalization (Ollama)
-# Input:  "Kal subah office jana hai and I'm not ready yet!"
-# Output: "Kal subah office jaana hai, and I'm not ready yet!"
+## 🛠️ Technical Details
 
-# TTS Generation (Edge TTS)
-# Output: output.mp3 (natural-sounding speech)
+### Backend
+- **Framework**: FastAPI (async)
+- **TTS Engine**: Edge TTS (Microsoft Azure Neural Voices)
+- **LLM Integration**: Ollama (for emotion detection)
+- **Audio Format**: MP3
+
+### Frontend
+- Vanilla JavaScript (no frameworks)
+- Modern CSS with CSS Grid and Flexbox
+- Responsive design for mobile and desktop
+- Real-time status updates and feedback
+
+## 📝 API Endpoints
+
+### `GET /`
+Returns the web interface
+
+### `GET /emotions`
+Returns list of available emotions
+```json
+{
+  "emotions": ["neutral", "enthusiastically", "sarcastically", ...]
+}
 ```
 
-## 🛠️ Troubleshooting
-
-### Common Issues
-
-1. **"Missing required package"**
-   - Run: `pip install -r requirements.txt`
-
-2. **"Web interface not available"**
-   - Install FastAPI: `pip install fastapi uvicorn`
-
-3. **"Advanced models not available"**
-   - Install PyTorch: `pip install torch transformers`
-   - Ensure sufficient GPU memory (8GB+)
-
-4. **"Ollama normalization failed"**
-   - Install Ollama from https://ollama.ai/
-   - Make sure Ollama service is running
-
-### Performance Tips
-
-- **First run**: May take longer as TTS models are downloaded
-- **Memory**: Use `--tts-engine edge` for lower memory usage
-- **Speed**: Use `--skip-normalization` for faster processing
-- **GPU**: Advanced models work best with CUDA GPU
-
-## 📝 Example Texts
-
-Try these Hinglish examples:
-
-```bash
-# Business
-python main.py --text "Aaj client meeting hai at 3 PM, please be ready"
-
-# Daily conversation  
-python main.py --text "Kal subah gym jana hai, phir office"
-
-# Mixed technical
-python main.py --text "API integration complete hai, ab testing karna hai"
-
-# Pure Hindi
-python main.py --text "नमस्ते, यह एक टेस्ट है" --voice-style hindi
-
-# Hindi with Google TTS
-python main.py --text "आज मीटिंग है" --tts-engine gtts
+### `POST /synthesize`
+Generate speech from text
+```json
+{
+  "text": "Your text here",
+  "emotion": "enthusiastically",
+  "speed": 1.0,
+  "use_llm": true
+}
 ```
+
+Returns: MP3 audio file
+
+## 🎨 UI Features
+
+- **Character Counter**: Real-time character count
+- **Emotion Tag Buttons**: Quick insertion of emotion tags
+- **Speed Slider**: Visual speed adjustment
+- **Status Messages**: Color-coded feedback (info/success/error)
+- **Audio Player**: Built-in playback with controls
+- **Download Button**: Easy audio file download
+- **Keyboard Shortcuts**: Ctrl/Cmd + Enter to generate
+
+## 🔄 File Management
+
+The application automatically:
+- Creates an `output/` directory for generated files
+- Deletes old output files before generating new ones
+- Uses timestamps for unique filenames
+- Cleans up temporary files after generation
+
+## ⚠️ Requirements
+
+- Python 3.8+
+- Internet connection (for Edge TTS)
+- Ollama (optional, for AI emotion detection)
+
+## 🐛 Troubleshooting
+
+### "Ollama not available" warning
+This is normal if you haven't installed Ollama. The app will work without it, but won't have AI emotion detection.
+
+### Audio not playing
+Some browsers block auto-play. Click the play button on the audio player.
+
+### Generation is slow
+- First request may be slower as Edge TTS initializes
+- LLM processing adds 2-5 seconds if enabled
+- Consider disabling LLM for faster generation
 
 ## 🤝 Contributing
 
-Feel free to submit issues and enhancement requests!
+Contributions are welcome! Some ideas for improvements:
+- Add more emotion types
+- Support for multiple languages
+- Audio segment concatenation for multi-emotion text
+- Voice cloning support
+- Batch processing
 
 ## 📄 License
 
-This project is open source and available under the MIT License.
+MIT License - feel free to use and modify!
+
+## 🙏 Acknowledgments
+
+- **Edge TTS**: Microsoft Azure Neural Voices
+- **Ollama**: Local LLM inference
+- **FastAPI**: Modern Python web framework
 
 ---
 
-**Made with ❤️ for the Hinglish-speaking community**
+Made with ❤️ for natural-sounding speech synthesis

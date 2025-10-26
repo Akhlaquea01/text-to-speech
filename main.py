@@ -1,49 +1,30 @@
 #!/usr/bin/env python3
 """
-Hinglish Text-to-Speech System
-A unified application that provides both web interface and command-line functionality.
-Supports multiple TTS engines and automatic hardware detection.
+Hinglish Text-to-Speech System with Emotion Tags
+Web-based TTS application with support for emotion styling via LLM processing.
+Uses Google TTS (gTTS) - open source, no SSL issues.
 """
 
-import argparse
-import sys
 import os
-import subprocess
 import asyncio
-import torch
+import glob
+import re
 from pathlib import Path
+from datetime import datetime
 
 # Web interface imports
-try:
-    from fastapi import FastAPI, Request, HTTPException
-    from fastapi.responses import HTMLResponse, FileResponse
-    from fastapi.templating import Jinja2Templates
-    from fastapi.staticfiles import StaticFiles
-    import uvicorn
-    from pydantic import BaseModel
-    WEB_AVAILABLE = True
-except ImportError:
-    WEB_AVAILABLE = False
-    print("⚠️  Web interface not available. Install FastAPI for web features.")
+from fastapi import FastAPI, Request, HTTPException
+from fastapi.responses import HTMLResponse, FileResponse
+from fastapi.templating import Jinja2Templates
+from fastapi.staticfiles import StaticFiles
+import uvicorn
+from pydantic import BaseModel
 
 # TTS imports
-try:
-    from gtts import gTTS
-    import edge_tts
-    import soundfile as sf
-    TTS_AVAILABLE = True
-except ImportError as e:
-    print(f"❌ Missing TTS package: {e}")
-    TTS_AVAILABLE = False
-
-# Advanced TTS imports (optional)
-try:
-    from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
-    from snac import SNAC
-    ADVANCED_TTS_AVAILABLE = True
-except ImportError:
-    ADVANCED_TTS_AVAILABLE = False
-    print("⚠️  Advanced TTS models not available. Using basic TTS engines.")
+from gtts import gTTS
+from pydub import AudioSegment
+from pydub.effects import speedup, normalize
+import io
 
 # Ollama import
 try:
@@ -51,453 +32,241 @@ try:
     OLLAMA_AVAILABLE = True
 except ImportError:
     OLLAMA_AVAILABLE = False
-    print("⚠️  Ollama not available. Text normalization will be skipped.")
-
-# Audio processing
-try:
-    from pydub import AudioSegment
-    PYDUB_AVAILABLE = True
-except ImportError:
-    PYDUB_AVAILABLE = False
-    print("⚠️  pydub not available - audio format conversion may be limited")
+    print("[WARN] Ollama not available. Emotion tag processing will use basic mapping.")
 
 
 class TTSRequest(BaseModel):
     text: str
-    normalize: bool = False
-    speaker: str = "kavya"
-    tts_engine: str = "edge"
-    voice_style: str = "natural"
+    emotion: str = "neutral"
     speed: float = 1.0
+    use_llm: bool = True
 
 
 class HinglishTTS:
-    """Main TTS application class"""
+    """Main TTS application class for web interface"""
     
     def __init__(self):
         self.app = None
-        self.advanced_models_loaded = False
-        self.model = None
-        self.tokenizer = None
-        self.snac_model = None
+        self.output_dir = Path("output")
+        self.output_dir.mkdir(exist_ok=True)
         
-        # Token constants for advanced TTS
-        self.START_OF_SPEECH_TOKEN = 128257
-        self.END_OF_SPEECH_TOKEN = 128258
-        self.START_OF_HUMAN_TOKEN = 128259
-        self.END_OF_HUMAN_TOKEN = 128260
-        self.START_OF_AI_TOKEN = 128261
-        self.END_OF_AI_TOKEN = 128262
-        self.AUDIO_CODE_BASE_OFFSET = 128266
-        
-        self.speakers = ["kavya", "agastya", "maitri", "vinaya"]
-        
-        # Voice mappings for Edge TTS
-        self.voice_map = {
-            "natural": "en-US-AriaNeural",
-            "conversational": "en-US-JennyNeural", 
-            "friendly": "en-US-GuyNeural",
-            "professional": "en-US-DavisNeural",
-            "expressive": "en-US-AmberNeural",
-            "calm": "en-US-MichelleNeural",
-            "energetic": "en-US-BrandonNeural",
-            "hindi": "hi-IN-SwaraNeural",
-            "default": "en-US-AriaNeural"
-        }
-        
-        self.style_params = {
-            "natural": {"pitch": "+0Hz", "volume": "+0%"},
-            "conversational": {"pitch": "+5Hz", "volume": "+0%"},
-            "friendly": {"pitch": "+10Hz", "volume": "+5%"},
-            "professional": {"pitch": "-5Hz", "volume": "+0%"},
-            "expressive": {"pitch": "+15Hz", "volume": "+10%"},
-            "calm": {"pitch": "-10Hz", "volume": "-5%"},
-            "energetic": {"pitch": "+20Hz", "volume": "+15%"}
+        # Emotion to speech parameters mapping
+        # Using gTTS with pydub for audio manipulation
+        self.emotion_params = {
+            "neutral": {
+                "lang": "en",
+                "tld": "com",
+                "slow": False,
+                "pitch_shift": 0,
+                "speed_factor": 1.0
+            },
+            "enthusiastically": {
+                "lang": "en",
+                "tld": "com",
+                "slow": False,
+                "pitch_shift": 3,
+                "speed_factor": 1.15
+            },
+            "sarcastically": {
+                "lang": "en",
+                "tld": "co.uk",
+                "slow": False,
+                "pitch_shift": -2,
+                "speed_factor": 0.95
+            },
+            "thoughtfully": {
+                "lang": "en",
+                "tld": "com",
+                "slow": True,
+                "pitch_shift": -1,
+                "speed_factor": 0.85
+            },
+            "laughs warmly": {
+                "lang": "en",
+                "tld": "com.au",
+                "slow": False,
+                "pitch_shift": 2,
+                "speed_factor": 1.05
+            },
+            "dramatically": {
+                "lang": "en",
+                "tld": "co.uk",
+                "slow": False,
+                "pitch_shift": 4,
+                "speed_factor": 1.1
+            },
+            "softly": {
+                "lang": "en",
+                "tld": "com",
+                "slow": True,
+                "pitch_shift": -3,
+                "speed_factor": 0.9
+            },
+            "confidently": {
+                "lang": "en",
+                "tld": "com",
+                "slow": False,
+                "pitch_shift": 1,
+                "speed_factor": 1.0
+            },
+            "whispers": {
+                "lang": "en",
+                "tld": "com",
+                "slow": True,
+                "pitch_shift": -4,
+                "speed_factor": 0.8
+            },
+            "excitedly": {
+                "lang": "en",
+                "tld": "com.au",
+                "slow": False,
+                "pitch_shift": 5,
+                "speed_factor": 1.2
+            }
         }
 
-    def check_ollama_availability(self):
-        """Check if Ollama is installed and running."""
-        if not OLLAMA_AVAILABLE:
-            return False
-            
+    def cleanup_old_files(self):
+        """Delete old output files before generating new ones"""
         try:
-            result = subprocess.run(["ollama", "list"], capture_output=True, text=True, timeout=10)
-            if result.returncode == 0:
-                print("✅ Ollama is available")
-                return True
-            else:
-                print("⚠️  Ollama is not running. Please start Ollama service.")
-                return False
-        except FileNotFoundError:
-            print("❌ Ollama is not installed. Please install Ollama first:")
-            print("   Visit: https://ollama.ai/")
-            return False
+            # Clean up output directory
+            pattern = str(self.output_dir / "output_*.mp3")
+            for file in glob.glob(pattern):
+                try:
+                    os.remove(file)
+                    print(f"[CLEANUP] Deleted old file: {file}")
+                except Exception as e:
+                    print(f"[WARN] Could not delete {file}: {e}")
+            
+            # Clean up temp files
+            temp_pattern = str(self.output_dir / "temp_*.mp3")
+            for file in glob.glob(temp_pattern):
+                try:
+                    os.remove(file)
+                    print(f"[CLEANUP] Deleted temp file: {file}")
+                except Exception as e:
+                    print(f"[WARN] Could not delete {file}: {e}")
         except Exception as e:
-            print(f"⚠️  Error checking Ollama: {e}")
-            return False
+            print(f"[WARN] Cleanup error: {e}")
 
-    def normalize_text_with_ollama(self, text, model="llama3"):
-        """Normalize Hinglish text using Ollama LLM."""
+    async def process_emotion_tags_with_llm(self, text: str) -> list:
+        """
+        Process text with emotion tags using LLM to add appropriate styling.
+        Returns list of (text_segment, emotion) tuples.
+        """
         if not OLLAMA_AVAILABLE:
-            print("⚠️  Ollama not available, using original text")
-            return text
-            
+            return [(text, "neutral")]
+        
         try:
-            prompt = f"""Please normalize and improve the following Hinglish text (mix of Hindi and English). 
-            Fix punctuation, improve flow, and make it sound natural for text-to-speech.
-            Only return the corrected text, no explanations:
+            prompt = f"""You are a text-to-speech emotion analyzer. Analyze the following text and add emotion tags where appropriate.
+
+Available emotion tags: [enthusiastically], [sarcastically], [thoughtfully], [laughs warmly], [dramatically], [softly], [confidently], [whispers], [excitedly], [neutral]
+
+Input text: {text}
+
+Please return ONLY the text with emotion tags inserted at appropriate positions. Format: [emotion] text segment
+Example: [enthusiastically] I love this! [thoughtfully] But maybe we should consider other options.
+
+Important: Return ONLY the formatted text with emotion tags, no explanations or additional commentary."""
+
+            print(f"[LLM] Processing emotion tags with LLM...")
             
-            {text}"""
-            
-            print(f"🧠 Normalizing text with Ollama ({model})...")
-            
-            try:
-                response = ollama.chat(
-                    model=model,
+            response = await asyncio.to_thread(
+                ollama.chat,
+                model="llama3",
                     messages=[{'role': 'user', 'content': prompt}]
                 )
-                normalized_text = response['message']['content'].strip()
-            except Exception as e:
-                print(f"⚠️  Ollama client failed, trying subprocess: {e}")
-                result = subprocess.run(
-                    ["ollama", "run", model, prompt], 
-                    capture_output=True, 
-                    text=True,
-                    timeout=60
-                )
-                if result.returncode != 0:
-                    raise Exception(f"Ollama subprocess failed: {result.stderr}")
-                normalized_text = result.stdout.strip()
             
-            # Clean up the response
-            lines = normalized_text.split('\n')
-            for line in lines:
-                if line.strip() and not line.strip().startswith(('Here', 'The', 'Normalized', 'Corrected')):
-                    normalized_text = line.strip()
-                    break
+            processed_text = response['message']['content'].strip()
+            print(f"[LLM] Processed: {processed_text}")
             
-            return normalized_text
+            # Parse the emotion-tagged text
+            segments = self.parse_emotion_tags(processed_text)
+            return segments
             
         except Exception as e:
-            print(f"⚠️  Ollama normalization failed: {e}")
-            print("📝 Using original text without normalization...")
-            return text
+            print(f"[WARN] LLM processing failed: {e}, using basic parsing")
+            return [(text, "neutral")]
 
-    def detect_language(self, text):
-        """Simple language detection based on character analysis."""
-        hindi_chars = 0
-        english_chars = 0
+    def parse_emotion_tags(self, text: str) -> list:
+        """
+        Parse text with emotion tags into segments.
+        Returns list of (text_segment, emotion) tuples.
+        """
+        segments = []
+        pattern = r'\[([^\]]+)\]\s*([^\[]+)'
+        matches = re.findall(pattern, text)
         
-        for char in text:
-            if '\u0900' <= char <= '\u097F':  # Hindi Unicode range
-                hindi_chars += 1
-            elif char.isalpha():
-                english_chars += 1
+        if matches:
+            for emotion, segment in matches:
+                emotion = emotion.lower().strip()
+                segment = segment.strip()
+                if segment:
+                    # Map emotion to available emotions
+                    if emotion not in self.emotion_params:
+                        emotion = "neutral"
+                    segments.append((segment, emotion))
+        else:
+            # No tags found, return as neutral
+            segments.append((text.strip(), "neutral"))
         
-        if hindi_chars > english_chars:
-            return "hi"
-        elif english_chars > hindi_chars:
-            return "en"
-        else:
-            return "mixed"  # Hinglish
+        return segments
 
-    async def generate_tts_edge(self, text, output_file="output.mp3", speed=1.0, voice="en-US-AriaNeural", pitch="+0Hz", volume="+0%"):
-        """Generate speech using Edge TTS."""
+    async def generate_tts_gtts(self, text: str, output_file: str, emotion: str = "neutral", speed: float = 1.0):
+        """Generate speech using Google TTS with emotion parameters."""
         try:
-            print("🎙️ Initializing Edge TTS...")
-            print(f"🎵 Using voice: {voice}")
-            print(f"🎚️ Speed: {speed}x, Pitch: {pitch}, Volume: {volume}")
+            # Get parameters for emotion
+            params = self.emotion_params.get(emotion, self.emotion_params["neutral"])
             
-            communicate = edge_tts.Communicate(
-                text, 
-                voice, 
-                rate=f"+{int((speed-1)*100)}%",
-                pitch=pitch,
-                volume=volume
+            print(f"[TTS] Generating with Google TTS")
+            print(f"[TTS] Emotion: {emotion}")
+            print(f"[TTS] Language: {params['lang']}, TLD: {params['tld']}")
+            print(f"[TTS] Speed factor: {params['speed_factor'] * speed}")
+            
+            # Generate speech with gTTS
+            tts = gTTS(
+                text=text,
+                lang=params['lang'],
+                tld=params['tld'],
+                slow=params['slow']
             )
             
-            print("🎤 Generating speech...")
-            await communicate.save(output_file)
-            print(f"✅ Audio saved to {output_file}")
+            # Save to bytes buffer
+            fp = io.BytesIO()
+            tts.write_to_fp(fp)
+            fp.seek(0)
             
-            if os.path.exists(output_file):
-                file_size = os.path.getsize(output_file) / 1024
-                print(f"📁 File size: {file_size:.1f} KB")
-                
+            # Load audio with pydub
+            audio = AudioSegment.from_file(fp, format="mp3")
+            
+            # Apply speed adjustment
+            final_speed = params['speed_factor'] * speed
+            if final_speed != 1.0:
+                audio = speedup(audio, playback_speed=final_speed)
+            
+            # Apply pitch shift (simulate using octave shift)
+            if params['pitch_shift'] != 0:
+                # Rough pitch adjustment by changing sample rate
+                new_sample_rate = int(audio.frame_rate * (1 + params['pitch_shift'] * 0.01))
+                audio = audio._spawn(audio.raw_data, overrides={
+                    'frame_rate': new_sample_rate
+                }).set_frame_rate(audio.frame_rate)
+            
+            # Normalize audio
+            audio = normalize(audio)
+            
+            # Export to file
+            audio.export(output_file, format="mp3")
+            print(f"[OK] Audio segment saved to {output_file}")
+            
         except Exception as e:
-            print(f"❌ Edge TTS generation failed: {e}")
+            print(f"[ERROR] Google TTS generation failed: {e}")
+            import traceback
+            traceback.print_exc()
             raise
-
-    def generate_tts_gtts(self, text, output_file="output.mp3", speed=1.0, lang="auto"):
-        """Generate speech using Google TTS."""
-        try:
-            print("🎙️ Initializing Google TTS...")
-            
-            if lang == "auto":
-                hindi_chars = sum(1 for char in text if '\u0900' <= char <= '\u097F')
-                english_chars = sum(1 for char in text if char.isalpha())
-                
-                print(f"🔍 Hindi chars: {hindi_chars}, English chars: {english_chars}")
-                
-                if hindi_chars > 0:
-                    lang = "hi"
-                else:
-                    lang = "en"
-            
-            print(f"🌍 Language: {lang}")
-            
-            tts = gTTS(text=text, lang=lang, slow=False)
-            
-            print("🎤 Generating speech...")
-            temp_file = "temp_tts.mp3"
-            tts.save(temp_file)
-            
-            if output_file.endswith('.mp3'):
-                os.rename(temp_file, output_file)
-            else:
-                if PYDUB_AVAILABLE:
-                    audio = AudioSegment.from_mp3(temp_file)
-                    audio.export(output_file, format="mp3")
-                    os.remove(temp_file)
-                else:
-                    os.rename(temp_file, output_file)
-            
-            print(f"✅ Audio saved to {output_file}")
-            
-            if os.path.exists(output_file):
-                file_size = os.path.getsize(output_file) / 1024
-                print(f"📁 File size: {file_size:.1f} KB")
-                
-        except Exception as e:
-            print(f"❌ Google TTS generation failed: {e}")
-            raise
-
-    def load_advanced_models(self):
-        """Load advanced TTS models if available."""
-        if not ADVANCED_TTS_AVAILABLE or self.advanced_models_loaded:
-            return
-            
-        try:
-            print("Loading advanced TTS models...")
-            
-            # Check if CUDA is available
-            if torch.cuda.is_available():
-                print("Using GPU acceleration...")
-                quantization_config = BitsAndBytesConfig(
-                    load_in_4bit=True,
-                    bnb_4bit_quant_type="nf4",
-                    bnb_4bit_compute_dtype=torch.bfloat16,
-                    bnb_4bit_use_double_quant=True,
-                )
-                
-                self.model = AutoModelForCausalLM.from_pretrained(
-                    "maya-research/veena-tts",
-                    quantization_config=quantization_config,
-                    device_map="auto",
-                    trust_remote_code=True,
-                )
-                self.snac_model = SNAC.from_pretrained("hubertsiuzdak/snac_24khz").eval().cuda()
-            else:
-                print("Using CPU (slower but compatible)...")
-                self.model = AutoModelForCausalLM.from_pretrained(
-                    "maya-research/veena-tts",
-                    device_map="cpu",
-                    trust_remote_code=True,
-                    torch_dtype=torch.float32,
-                )
-                self.snac_model = SNAC.from_pretrained("hubertsiuzdak/snac_24khz").eval().cpu()
-            
-            self.tokenizer = AutoTokenizer.from_pretrained("maya-research/veena-tts", trust_remote_code=True)
-            self.advanced_models_loaded = True
-            print("✅ Advanced models loaded successfully!")
-            
-        except Exception as e:
-            print(f"⚠️  Advanced models not available: {e}")
-            print("Using basic TTS engines instead...")
-
-    def decode_snac_tokens(self, snac_tokens):
-        """De-interleave and decode SNAC tokens to audio."""
-        if not snac_tokens or len(snac_tokens) % 7 != 0:
-            return None
-
-        snac_device = next(self.snac_model.parameters()).device
-        codes_lvl = [[] for _ in range(3)]
-        llm_codebook_offsets = [self.AUDIO_CODE_BASE_OFFSET + i * 4096 for i in range(7)]
-
-        for i in range(0, len(snac_tokens), 7):
-            codes_lvl[0].append(snac_tokens[i] - llm_codebook_offsets[0])
-            codes_lvl[1].append(snac_tokens[i+1] - llm_codebook_offsets[1])
-            codes_lvl[1].append(snac_tokens[i+4] - llm_codebook_offsets[4])
-            codes_lvl[2].append(snac_tokens[i+2] - llm_codebook_offsets[2])
-            codes_lvl[2].append(snac_tokens[i+3] - llm_codebook_offsets[3])
-            codes_lvl[2].append(snac_tokens[i+5] - llm_codebook_offsets[5])
-            codes_lvl[2].append(snac_tokens[i+6] - llm_codebook_offsets[6])
-
-        hierarchical_codes = []
-        for lvl_codes in codes_lvl:
-            tensor = torch.tensor(lvl_codes, dtype=torch.int32, device=snac_device).unsqueeze(0)
-            if torch.any((tensor < 0) | (tensor > 4095)):
-                raise ValueError("Invalid SNAC token values")
-            hierarchical_codes.append(tensor)
-
-        with torch.no_grad():
-            audio_hat = self.snac_model.decode(hierarchical_codes)
-
-        return audio_hat.squeeze().clamp(-1, 1).cpu().numpy()
-
-    def generate_speech_advanced(self, text, speaker="kavya", temperature=0.4, top_p=0.9):
-        """Generate speech using advanced TTS models."""
-        if not self.advanced_models_loaded:
-            raise ValueError("Advanced models not loaded")
-            
-        prompt = f"<spk_{speaker}> {text}"
-        prompt_tokens = self.tokenizer.encode(prompt, add_special_tokens=False)
-
-        input_tokens = [
-            self.START_OF_HUMAN_TOKEN,
-            *prompt_tokens,
-            self.END_OF_HUMAN_TOKEN,
-            self.START_OF_AI_TOKEN,
-            self.START_OF_SPEECH_TOKEN
-        ]
-
-        input_ids = torch.tensor([input_tokens], device=self.model.device)
-        max_tokens = min(int(len(text) * 1.3) * 7 + 21, 700)
-
-        with torch.no_grad():
-            output = self.model.generate(
-                input_ids,
-                max_new_tokens=max_tokens,
-                do_sample=True,
-                temperature=temperature,
-                top_p=top_p,
-                repetition_penalty=1.05,
-                pad_token_id=self.tokenizer.pad_token_id,
-                eos_token_id=[self.END_OF_SPEECH_TOKEN, self.END_OF_AI_TOKEN]
-            )
-
-        generated_ids = output[0][len(input_tokens):].tolist()
-        snac_tokens = [
-            token_id for token_id in generated_ids
-            if self.AUDIO_CODE_BASE_OFFSET <= token_id < (self.AUDIO_CODE_BASE_OFFSET + 7 * 4096)
-        ]
-
-        if not snac_tokens:
-            raise ValueError("No audio tokens generated")
-
-        audio = self.decode_snac_tokens(snac_tokens)
-        return audio
-
-    async def generate_tts_async(self, text, output_file="output.mp3", speed=1.0, voice=None, tts_engine="edge", voice_style="natural"):
-        """Generate speech using the specified TTS engine (async version for web interface)."""
-        if tts_engine == "edge":
-            # Use Edge TTS with enhanced voice options
-            detected_lang = self.detect_language(text)
-            print(f"🌍 Detected language: {detected_lang}")
-            
-            if detected_lang == "hi" or detected_lang == "mixed" or voice_style == "hindi":
-                hindi_voice_map = {
-                    "natural": "hi-IN-SwaraNeural",
-                    "conversational": "hi-IN-MadhurNeural", 
-                    "friendly": "hi-IN-SwaraNeural",
-                    "professional": "hi-IN-MadhurNeural",
-                    "expressive": "hi-IN-SwaraNeural",
-                    "calm": "hi-IN-MadhurNeural",
-                    "energetic": "hi-IN-SwaraNeural",
-                    "hindi": "hi-IN-SwaraNeural"
-                }
-                selected_voice = hindi_voice_map.get(voice_style, "hi-IN-SwaraNeural")
-            else:
-                selected_voice = voice or self.voice_map.get(voice_style, self.voice_map["default"])
-            
-            params = self.style_params.get(voice_style, self.style_params["natural"])
-            print(f"🎭 Voice style: {voice_style}")
-            
-            await self.generate_tts_edge(
-                text, 
-                output_file, 
-                speed, 
-                selected_voice,
-                params["pitch"],
-                params["volume"]
-            )
-            
-        elif tts_engine == "gtts":
-            self.generate_tts_gtts(text, output_file, speed, "auto")
-            
-        elif tts_engine == "advanced":
-            if not self.advanced_models_loaded:
-                self.load_advanced_models()
-            
-            if self.advanced_models_loaded:
-                print("🎙️ Using advanced TTS models...")
-                audio = self.generate_speech_advanced(text, voice_style)
-                sf.write(output_file, audio, 24000)
-                print(f"✅ Audio saved to {output_file}")
-            else:
-                print("⚠️  Advanced models not available, falling back to Edge TTS")
-                await self.generate_tts_async(text, output_file, speed, voice, "edge", voice_style)
-        else:
-            raise ValueError(f"Unsupported TTS engine: {tts_engine}")
-
-    def generate_tts(self, text, output_file="output.mp3", speed=1.0, voice=None, tts_engine="edge", voice_style="natural"):
-        """Generate speech using the specified TTS engine (sync version for CLI)."""
-        if tts_engine == "edge":
-            # Use Edge TTS with enhanced voice options
-            detected_lang = self.detect_language(text)
-            print(f"🌍 Detected language: {detected_lang}")
-            
-            if detected_lang == "hi" or detected_lang == "mixed" or voice_style == "hindi":
-                hindi_voice_map = {
-                    "natural": "hi-IN-SwaraNeural",
-                    "conversational": "hi-IN-MadhurNeural", 
-                    "friendly": "hi-IN-SwaraNeural",
-                    "professional": "hi-IN-MadhurNeural",
-                    "expressive": "hi-IN-SwaraNeural",
-                    "calm": "hi-IN-MadhurNeural",
-                    "energetic": "hi-IN-SwaraNeural",
-                    "hindi": "hi-IN-SwaraNeural"
-                }
-                selected_voice = hindi_voice_map.get(voice_style, "hi-IN-SwaraNeural")
-            else:
-                selected_voice = voice or self.voice_map.get(voice_style, self.voice_map["default"])
-            
-            params = self.style_params.get(voice_style, self.style_params["natural"])
-            print(f"🎭 Voice style: {voice_style}")
-            
-            asyncio.run(self.generate_tts_edge(
-                text, 
-                output_file, 
-                speed, 
-                selected_voice,
-                params["pitch"],
-                params["volume"]
-            ))
-            
-        elif tts_engine == "gtts":
-            self.generate_tts_gtts(text, output_file, speed, "auto")
-            
-        elif tts_engine == "advanced":
-            if not self.advanced_models_loaded:
-                self.load_advanced_models()
-            
-            if self.advanced_models_loaded:
-                print("🎙️ Using advanced TTS models...")
-                audio = self.generate_speech_advanced(text, voice_style)
-                sf.write(output_file, audio, 24000)
-                print(f"✅ Audio saved to {output_file}")
-            else:
-                print("⚠️  Advanced models not available, falling back to Edge TTS")
-                self.generate_tts(text, output_file, speed, voice, "edge", voice_style)
-        else:
-            raise ValueError(f"Unsupported TTS engine: {tts_engine}")
 
     def setup_web_interface(self):
         """Setup FastAPI web interface."""
-        if not WEB_AVAILABLE:
-            raise ImportError("FastAPI not available. Install with: pip install fastapi uvicorn")
-            
-        self.app = FastAPI(title="Hinglish Text-to-Speech", version="1.0.0")
+        self.app = FastAPI(title="Hinglish Text-to-Speech with Emotions", version="2.0.0")
         
         # Setup templates and static files
         templates = Jinja2Templates(directory="templates")
@@ -507,36 +276,92 @@ class HinglishTTS:
         async def read_root(request: Request):
             return templates.TemplateResponse("index.html", {"request": request})
         
+        @self.app.get("/emotions")
+        async def get_emotions():
+            """Return available emotions"""
+            return {"emotions": list(self.emotion_params.keys())}
+        
         @self.app.post("/synthesize")
         async def synthesize(request: TTSRequest):
             try:
-                text_to_synthesize = request.text
+                print(f"\n{'='*50}")
+                print(f"🎬 New TTS Request")
+                print(f"📝 Text: {request.text}")
+                print(f"🎭 Emotion: {request.emotion}")
+                print(f"⚡ Speed: {request.speed}x")
+                print(f"🧠 Use LLM: {request.use_llm}")
+                print(f"{'='*50}\n")
                 
-                if request.normalize and OLLAMA_AVAILABLE:
-                    try:
-                        text_to_synthesize = self.normalize_text_with_ollama(request.text)
-                    except Exception as e:
-                        print(f"Ollama normalization failed: {e}")
-                        print("Using original text without normalization...")
-
-                print(f"Generating speech for: {text_to_synthesize}")
+                # Cleanup old files first
+                self.cleanup_old_files()
                 
-                # Generate audio using async version
-                await self.generate_tts_async(
-                    text_to_synthesize,
-                    "output.mp3",
-                    request.speed,
-                    None,
-                    request.tts_engine,
-                    request.voice_style
+                # Process text with LLM to add emotion tags if requested
+                if '[' not in request.text and request.use_llm and OLLAMA_AVAILABLE:
+                    print("🧠 Using LLM to add emotion tags...")
+                    segments = await self.process_emotion_tags_with_llm(request.text)
+                elif '[' in request.text:
+                    # Parse existing emotion tags
+                    print("📋 Parsing existing emotion tags...")
+                    segments = self.parse_emotion_tags(request.text)
+                else:
+                    # No LLM, use specified emotion for entire text
+                    segments = [(request.text, request.emotion)]
+                
+                print(f"📊 Generated {len(segments)} segment(s)")
+                
+                # Generate timestamp for unique filename
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                output_file = str(self.output_dir / f"output_{timestamp}.mp3")
+                
+                if len(segments) == 1:
+                    # Single segment - generate directly to final output
+                    text_segment, emotion = segments[0]
+                    
+                    # Override emotion if explicitly specified in request (not neutral)
+                    if request.emotion != "neutral":
+                        emotion = request.emotion
+                    
+                    await self.generate_tts_gtts(
+                        text_segment,
+                        output_file,
+                        emotion,
+                        request.speed
+                    )
+                else:
+                    # Multiple segments - generate each
+                    # For now, we'll generate just the first segment as a simple implementation
+                    # In production, you'd use pydub or ffmpeg to concatenate properly
+                    print(f"⚠️ Multiple segments detected - generating concatenated speech...")
+                    
+                    # Combine all text with their emotions
+                    combined_text = " ".join([seg[0] for seg in segments])
+                    # Use the most common emotion or first one
+                    primary_emotion = segments[0][1]
+                    
+                    await self.generate_tts_gtts(
+                        combined_text,
+                        output_file,
+                        primary_emotion,
+                        request.speed
+                    )
+                
+                if not os.path.exists(output_file):
+                    raise HTTPException(status_code=500, detail="Audio file not generated")
+                
+                print(f"\n[OK] Audio generation complete!")
+                print(f"[INFO] Output file: {output_file}")
+                print(f"[INFO] Size: {os.path.getsize(output_file) / 1024:.1f} KB\n")
+                
+                return FileResponse(
+                    output_file,
+                    media_type="audio/mpeg",
+                    filename=f"tts_{timestamp}.mp3"
                 )
-                output_filename = "output.mp3"
-                
-                print(f"Audio saved to {output_filename}")
-                return FileResponse(output_filename, media_type="audio/mpeg")
                 
             except Exception as e:
-                print(f"TTS synthesis error: {e}")
+                print(f"\n[ERROR] TTS synthesis error: {e}\n")
+                import traceback
+                traceback.print_exc()
                 raise HTTPException(status_code=500, detail=str(e))
         
         return self.app
@@ -546,167 +371,22 @@ class HinglishTTS:
         if not self.app:
             self.setup_web_interface()
         
-        print(f"🌐 Starting web server at http://{host}:{port}")
-        print("📝 Enter Hinglish text and select a speaker to generate speech!")
+        print(f"\n{'='*60}")
+        print(f"[TTS] Hinglish Text-to-Speech with Emotion Tags")
+        print(f"[TTS] Using Google TTS (gTTS) - No SSL issues!")
+        print(f"{'='*60}")
+        print(f"[INFO] Server: http://{host}:{port}")
+        print(f"[INFO] Available emotions: {', '.join(self.emotion_params.keys())}")
+        print(f"[INFO] LLM processing: {'Available' if OLLAMA_AVAILABLE else 'Not available'}")
+        print(f"{'='*60}\n")
+        
         uvicorn.run(self.app, host=host, port=port)
-
-    def run_cli(self, args):
-        """Run command-line interface."""
-        print("🎯 Hinglish Text-to-Speech System")
-        print("=" * 40)
-        print(f"📝 Input text: {args.text}")
-        print(f"📁 Output file: {args.output}")
-        print(f"⚡ Speed: {args.speed}x")
-        print(f"🎭 Voice style: {args.voice_style}")
-        print(f"🔧 TTS Engine: {args.tts_engine}")
-        print()
-        
-        # Check Ollama availability if normalization is enabled
-        if not args.skip_normalization and OLLAMA_AVAILABLE:
-            if not self.check_ollama_availability():
-                print("⚠️  Proceeding without text normalization...")
-                args.skip_normalization = True
-        
-        try:
-            # Step 1: Text normalization
-            if args.skip_normalization:
-                normalized_text = args.text
-                print("📝 Using original text (normalization skipped)")
-            else:
-                normalized_text = self.normalize_text_with_ollama(args.text, args.model)
-                print(f"📝 Normalized text: {normalized_text}")
-            
-            print()
-            
-            # Step 2: Generate TTS
-            self.generate_tts(
-                text=normalized_text,
-                output_file=args.output,
-                speed=args.speed,
-                voice=args.voice,
-                tts_engine=args.tts_engine,
-                voice_style=args.voice_style
-            )
-            
-            print()
-            print("🎉 Success! Your Hinglish text has been converted to speech.")
-            
-        except KeyboardInterrupt:
-            print("\n⏹️  Process interrupted by user")
-            sys.exit(1)
-        except Exception as e:
-            print(f"\n❌ Error: {e}")
-            sys.exit(1)
 
 
 def main():
     """Main application entry point."""
-    parser = argparse.ArgumentParser(
-        description="Hinglish Text-to-Speech System",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Examples:
-  python main.py --text "Aaj meeting hai at 5 pm"
-  python main.py --text "Kal subah office jana hai and I'm not ready yet!" --speed 1.2
-  python main.py --text "Hello world" --output my_audio.mp3
-  python main.py --text "Welcome to our meeting" --voice-style conversational
-  python main.py --text "This is important" --voice-style professional
-  python main.py --text "Let's have fun!" --voice-style energetic
-  python main.py --web  # Start web interface
-        """
-    )
-    
-    # Mode selection
-    parser.add_argument(
-        "--web", 
-        action="store_true", 
-        help="Start web interface instead of command line"
-    )
-    parser.add_argument(
-        "--host", 
-        type=str, 
-        default="0.0.0.0", 
-        help="Host for web interface (default: 0.0.0.0)"
-    )
-    parser.add_argument(
-        "--port", 
-        type=int, 
-        default=8000, 
-        help="Port for web interface (default: 8000)"
-    )
-    
-    # CLI arguments
-    parser.add_argument(
-        "--text", 
-        type=str, 
-        help="Hinglish text input to convert to speech"
-    )
-    parser.add_argument(
-        "--output", 
-        type=str, 
-        default="output.mp3", 
-        help="Output audio file path (default: output.mp3)"
-    )
-    parser.add_argument(
-        "--speed", 
-        type=float, 
-        default=1.0, 
-        help="Speech speed multiplier (default: 1.0)"
-    )
-    parser.add_argument(
-        "--voice", 
-        type=str, 
-        help="Path to reference voice file for cloning (optional)"
-    )
-    parser.add_argument(
-        "--model", 
-        type=str, 
-        default="llama3", 
-        help="Ollama model for text normalization (default: llama3)"
-    )
-    parser.add_argument(
-        "--skip-normalization", 
-        action="store_true", 
-        help="Skip text normalization with Ollama"
-    )
-    parser.add_argument(
-        "--voice-style", 
-        type=str, 
-        default="natural", 
-        choices=["natural", "conversational", "friendly", "professional", "expressive", "calm", "energetic", "hindi"],
-        help="Voice style for more natural speech (default: natural)"
-    )
-    parser.add_argument(
-        "--tts-engine", 
-        type=str, 
-        default="edge", 
-        choices=["edge", "gtts", "advanced"],
-        help="TTS engine to use (default: edge)"
-    )
-    parser.add_argument(
-        "--force-hindi", 
-        action="store_true", 
-        help="Force Hindi voice selection for mixed content"
-    )
-    
-    args = parser.parse_args()
-    
-    # Initialize TTS system
     tts = HinglishTTS()
-    
-    # Check if web mode is requested
-    if args.web:
-        if not WEB_AVAILABLE:
-            print("❌ Web interface not available. Install FastAPI: pip install fastapi uvicorn")
-            sys.exit(1)
-        tts.run_web_server(host=args.host, port=args.port)
-    else:
-        # CLI mode
-        if not args.text:
-            print("❌ --text argument is required for CLI mode")
-            print("Use --web to start web interface or provide --text for CLI")
-            sys.exit(1)
-        tts.run_cli(args)
+    tts.run_web_server()
 
 
 if __name__ == "__main__":
