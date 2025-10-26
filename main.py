@@ -73,9 +73,14 @@ class VeenaTTS:
             # Load model with memory-efficient dtype
             self.model = VitsModel.from_pretrained(
                 self.model_name,
-                torch_dtype=torch.bfloat16
+                dtype=torch.bfloat16
             )
-            self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
+            # Use a proper tokenizer for VITS models
+            try:
+                self.tokenizer = AutoTokenizer.from_pretrained("facebook/wav2vec2-base")
+            except:
+                # Fallback to a simpler approach
+                self.tokenizer = None
             print("[OK] Advanced TTS model loaded successfully.")
         except Exception as e:
             print(f"[ERROR] Could not load advanced TTS model: {e}")
@@ -114,9 +119,10 @@ class HinglishTTS:
         self.output_dir.mkdir(exist_ok=True)
         self.veena_tts = None
 
-        if ADVANCED_TTS_AVAILABLE:
-            self.veena_tts = VeenaTTS()
-            self.veena_tts.load_model()
+        # Advanced TTS disabled by default due to model compatibility issues
+        # if ADVANCED_TTS_AVAILABLE:
+        #     self.veena_tts = VeenaTTS()
+        #     self.veena_tts.load_model()
         
         # Emotion to speech parameters mapping
         # Using gTTS with pydub for audio manipulation

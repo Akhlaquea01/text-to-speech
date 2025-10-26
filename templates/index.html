@@ -12,22 +12,12 @@
         <textarea id="text-input" rows="10" cols="50" placeholder="Enter Hinglish text here..."></textarea>
         <div class="options">
             <input type="checkbox" id="normalize-checkbox">
-            <label for="normalize-checkbox">Use Ollama for text normalization</label>
+            <label for="normalize-checkbox">Use LLM for emotion processing</label>
         </div>
         <div class="options">
             <label for="engine-select">TTS Engine:</label>
             <select id="engine-select">
                 <option value="gtts">gTTS (Standard)</option>
-                <option value="advanced">Advanced (High Quality)</option>
-            </select>
-        </div>
-        <div class="options">
-            <label for="speaker-select">Speaker:</label>
-            <select id="speaker-select">
-                <option value="kavya">Kavya</option>
-                <option value="agastya">Agastya</option>
-                <option value="maitri">Maitri</option>
-                <option value="vinaya">Vinaya</option>
             </select>
         </div>
         <button id="convert-btn">Convert to Speech</button>
